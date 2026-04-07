@@ -47,7 +47,7 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h1 class='main-title'>🧲 ФИЗИКА: 8-СЫНЫП (орындаған жұмыстың суретін жүктеңіз)</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='main-title'>🧲 ФИЗИКА: (Орындаған жұмыстың суретін жүктеңіз)</h1>", unsafe_allow_html=True)
 
     # ==========================================
     # 3. ТАПСЫРУ ПРОЦЕСІ
