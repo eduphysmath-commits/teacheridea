@@ -4,21 +4,25 @@ import base64
 from io import BytesIO
 from PIL import Image
 import time
-import google.generativeai as genai
+from openai import OpenAI
 
 # ==========================================
 # 1. ҚҰПИЯ ПАРАМЕТРЛЕР ЖӘНЕ БАПТАУЛАР
 # ==========================================
 SUPABASE_URL = "https://eytvntwumnptjddlsarg.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV5dHZudHd1bW5wdGpkZGxzYXJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk4ODgzNzgsImV4cCI6MjA4NTQ2NDM3OH0.zBn48hYdDVvuzE3ZBg86L8_-XNl7ikCGA4lK7yUJW20"  
-GEMINI_API_KEY = "AIzaSyA3yhaOVIcvD4Qw1ZtBOhVROEuW4oUqF-M"
+
+# Сіздің Groq кілтіңіз
+GROQ_API_KEY = "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"
 
 # Supabase Headers
 headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
 
-# Gemini баптаулары (Егер қате шықса, 'gemini-1.5-flash-latest' деп өзгертіңіз)
-genai.configure(api_key=GEMINI_API_KEY)
-vision_model = genai.GenerativeModel('gemini-1.5-flash')
+# Groq баптаулары - OpenAI клиентін қолданып Groq серверіне қосылу
+client = OpenAI(
+    api_key=GROQ_API_KEY,
+    base_url="https://api.groq.com/openai/v1", # Groq сервері
+)
 
 # Бет баптауы
 st.set_page_config(page_title="Нәтижелер тақтасы | ten-edu", layout="wide", page_icon="📊")
@@ -53,8 +57,8 @@ def update_submission_score(sub_id, new_score, teacher_feedback):
 # ==========================================
 # 4. НЕГІЗГІ ИНТЕРФЕЙС
 # ==========================================
-st.title("📊 Мұғалім кабинеті: AI-Прогностика және Бағалау")
-st.write("Бұл парақшада оқушылардың жұмыстарын көріп, ЖИ-көмекші арқылы талдау жасай аласыз.")
+st.title("📊 Мұғалім кабинеті: AI-Прогностика және Бағалау (Groq)")
+st.write("Бұл парақшада оқушылардың жұмыстарын көріп, Groq ЖИ-көмекшісі арқылы талдау жасай аласыз.")
 st.write("---")
 
 exams_list = get_exams()
@@ -76,20 +80,27 @@ if exams_list:
         scores = [sub.get('score', 0) for sub in submissions if sub['status'] == 'done']
         avg_score = sum(scores) / len(scores) if len(scores) > 0 else 0
         
+        MAX_SCORE = 25 
+        
+        # Пайызды есептеу
+        percent = min(int((avg_score / MAX_SCORE) * 100), 100)
+        
         col_stat, col_pred = st.columns([1, 2])
         
         with col_stat:
-            st.metric("Сыныптың орташа балы", f"{int((avg_score/12)*100)}%", f"{round(avg_score, 1)}/12 балл")
+            st.metric("Сыныптың орташа балы", f"{percent}%", f"{round(avg_score, 1)}/{MAX_SCORE} балл")
             st.info(f"Барлығы: {len(submissions)} жұмыс тапсырылды")
             
         with col_pred:
-            if st.button("🚨 ЖИ арқылы предиктивті болжам жасау", use_container_width=True):
-                with st.spinner("ЖИ сыныптың когнитивті карталарын біріктіріп, талдап жатыр..."):
-                    # Барлық оқушылардың қателерін бір мәтінге жинау
+            if st.button("🚨 Groq арқылы предиктивті болжам жасау", use_container_width=True):
+                with st.spinner("Groq сыныптың қателерін талдап жатыр..."):
                     feedbacks = [sub.get('ai_feedback', '') for sub in submissions if sub.get('ai_feedback')]
                     
                     if len(feedbacks) > 0:
                         combined_text = "\n".join(feedbacks)
+                        
+                        # МАҢЫЗДЫ ӨЗГЕРІС: Қазақ тілінде токен көп кететіндіктен, 10,000 әріпке дейін ғана аламыз. Бұл 12,000 токендік лимитке нақты сыяды.
+                        combined_text = combined_text[:10000]
                         
                         prompt = f"""
                         Сен мектептің бас дата-аналитигісің. Төменде физика пәнінен бір сынып оқушыларының жіберген қателері жинақталған:
@@ -97,15 +108,21 @@ if exams_list:
                         
                         Осы мәліметтерге сүйеніп, мұғалімге мынадай құрылымда қысқаша прогностикалық ескерту жаса:
                         1. 🔴 Ең осал тұс: Сыныптың басым бөлігі қандай ортақ қате жіберді?
-                        2. 🔮 Предиктивті болжам: Келесі бақылауда (БЖБ/ТЖБ) оқушылар қандай тақырыптан сүрінуі ықтимал?
+                        2. 🔮 Предиктивті болжам: Келесі бақылауда оқушылар қандай тақырыптан сүрінуі ықтимал?
                         3. 💡 Мұғалімге ұсыныс: Келесі сабақтың жоспарын қалай өзгерту керек?
                         
                         Жауапты қазақ тілінде, нақты әрі кәсіби тілмен жаз.
                         """
                         try:
-                            # Gemini арқылы тексті талдау
-                            prediction = vision_model.generate_content(prompt)
-                            st.warning(f"**AI-Прогностика (Ескерту):**\n\n{prediction.text}")
+                            # Groq мәтіндік моделін қолдану
+                            response = client.chat.completions.create(
+                                model="llama-3.3-70b-versatile",
+                                messages=[
+                                    {"role": "user", "content": prompt}
+                                ]
+                            )
+                            prediction = response.choices[0].message.content
+                            st.warning(f"**AI-Прогностика (Ескерту):**\n\n{prediction}")
                         except Exception as e:
                             st.error(f"Болжам жасау кезінде қате шықты: {e}")
                     else:
@@ -118,7 +135,6 @@ if exams_list:
         # 6. ОҚУШЫЛАР ТІЗІМІ ЖӘНЕ ЖЕКЕ ТЕКСЕРУ
         # ==========================================
         for sub in submissions:
-            # Статусқа байланысты эмоджи қою
             if sub['status'] == 'cheated':
                 status_emoji = "🚫"
             elif sub['status'] == 'done':
@@ -128,7 +144,6 @@ if exams_list:
                 
             with st.expander(f"{status_emoji} {sub['student_name']} ({sub['student_class']}) - Қазіргі балл: {sub.get('score', 0)}"):
                 
-                # Анти-чит ескертуі
                 if sub['status'] == 'cheated':
                     st.error("🚫 БҰЛ ОҚУШЫ АНТИ-ЧИТ ЖҮЙЕСІНЕ ТҮСТІ! Емтихан кезінде басқа терезеге өтіп кеткен.")
                 
@@ -161,24 +176,49 @@ if exams_list:
 
                 st.write("---")
                 
-                # ЖИ-АССИСТЕНТ (GEMINI) БЛОГЫ
-                st.markdown("<div class='ai-box'><b>🤖 AI-Тьютор: Жұмысты автоматты талдау</b></div>", unsafe_allow_html=True)
+                # ЖИ-АССИСТЕНТ (GROQ VISION) БЛОГЫ
+                st.markdown("<div class='ai-box'><b>🤖 AI-Тьютор (Groq): Жұмысты автоматты талдау</b></div>", unsafe_allow_html=True)
                 
                 if img_for_ai:
-                    if st.button("🧠 Gemini арқылы талдау (Сократтық диалог)", key=f"ai_btn_{sub['id']}"):
-                        with st.spinner("ЖИ есептің логикалық қадамдарын оқып жатыр..."):
+                    if st.button("🧠 Groq арқылы талдау (Сократтық диалог)", key=f"ai_btn_{sub['id']}"):
+                        with st.spinner("Groq есептің логикалық қадамдарын оқып жатыр..."):
                             try:
-                                prompt = """
+                                # Суретті Base64 форматына айналдыру
+                                buffered = BytesIO()
+                                img_for_ai.convert("RGB").save(buffered, format="JPEG")
+                                img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+                                
+                                prompt = f"""
                                 Сен физика пәнінің тәжірибелі мұғалімісің. Мына оқушының дәптерге шығарған есебін тексер.
                                 1. Қатені тапсаң, дайын жауап берме! "Сократтық диалог" әдісімен бағыттаушы 1-2 сұрақ қой.
                                 2. Оқушының қандай когнитивті қате (мысалы, формуланы шатастырды, СИ жүйесіне айналдырмады) жібергенін қысқаша көрсет.
                                 3. Жауабыңды қазақ тілінде, жылы әрі мотивация беретіндей етіп жаз.
-                                4. Егер жұмыс мінсіз болса, оқушыны мақтап, 12 балл бер.
-                                5. Жауаптың соңында 'Ұсынылатын балл: X/12' деп нақты балл көрсет.
+                                4. Егер жұмыс мінсіз болса, оқушыны мақтап, {MAX_SCORE} балл бер.
+                                5. Жауаптың соңында 'Ұсынылатын балл: X/{MAX_SCORE}' деп нақты балл көрсет.
                                 """
-                                ai_response = vision_model.generate_content([prompt, img_for_ai])
-                                st.session_state[f"ai_text_{sub['id']}"] = ai_response.text
-                                st.success("ЖИ талдауы сәтті аяқталды!")
+                                
+                                # Groq Vision моделін қолдану
+                                response = client.chat.completions.create(
+                                    model="llama-3.2-11b-vision-preview",
+                                    messages=[
+                                        {
+                                            "role": "user",
+                                            "content": [
+                                                {"type": "text", "text": prompt},
+                                                {
+                                                    "type": "image_url",
+                                                    "image_url": {
+                                                        "url": f"data:image/jpeg;base64,{img_base64}"
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                )
+                                
+                                ai_response_text = response.choices[0].message.content
+                                st.session_state[f"ai_text_{sub['id']}"] = ai_response_text
+                                st.success("Groq талдауы сәтті аяқталды!")
                             except Exception as e:
                                 st.error(f"ЖИ тексеру кезінде қате шықты: {e}")
                 else:
